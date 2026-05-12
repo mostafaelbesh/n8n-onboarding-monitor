@@ -8,6 +8,17 @@ if ($already) {
     Write-Host "n8n is already running (PID $($already.Id)). Opening UI..." -ForegroundColor Green
 } else {
     Write-Host "Starting n8n..." -ForegroundColor Cyan
+
+    # Load .env into the current process so n8n inherits the vars
+    $envFile = Join-Path $PSScriptRoot ".env"
+    if (Test-Path $envFile) {
+        Get-Content $envFile | Where-Object { $_ -match "^\s*[^#].*=.*" } | ForEach-Object {
+            $parts = $_ -split "=", 2
+            [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), "Process")
+        }
+        Write-Host ".env loaded" -ForegroundColor DarkGray
+    }
+
     Start-Process -FilePath "cmd.exe" `
         -ArgumentList "/c n8n start" `
         -WindowStyle Minimized `
