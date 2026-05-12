@@ -1,0 +1,11 @@
+{
+  "name": "n8n-onboarding-monitor",
+  "version": "1.0.0",
+  "description": "Onboarding Doc Health Monitor — N8N workflow",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "n8n start"
+  },
+  "dependencies": {}
+}
