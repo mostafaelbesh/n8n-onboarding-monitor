@@ -9,20 +9,23 @@ if ($already) {
 } else {
     Write-Host "Starting n8n..." -ForegroundColor Cyan
 
-    # Load .env into the current process so n8n inherits the vars
+    # Load .env using PowerShell env drive so vars are in the current process environment block
     $envFile = Join-Path $PSScriptRoot ".env"
     if (Test-Path $envFile) {
-        Get-Content $envFile | Where-Object { $_ -match "^\s*[^#].*=.*" } | ForEach-Object {
+        Get-Content $envFile | Where-Object { $_ -match "^\s*[^#=][^=]*=.+" } | ForEach-Object {
             $parts = $_ -split "=", 2
-            [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), "Process")
+            Set-Item -Path "Env:$($parts[0].Trim())" -Value $parts[1].Trim()
         }
         Write-Host ".env loaded" -ForegroundColor DarkGray
     }
 
-    Start-Process -FilePath "cmd.exe" `
-        -ArgumentList "/c n8n start" `
-        -WindowStyle Minimized `
-        -WorkingDirectory $PSScriptRoot
+    # Use ProcessStartInfo with UseShellExecute=$false so the child process
+    # inherits the env vars set above. Start-Process defaults to UseShellExecute=$true
+    # (ShellExecute API) which does NOT propagate SetEnvironmentVariable changes.
+    $psi = [System.Diagnostics.ProcessStartInfo]::new("cmd.exe", "/c n8n start")
+    $psi.UseShellExecute = $false
+    $psi.WorkingDirectory = $PSScriptRoot
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
 
     # Wait until port 5678 is accepting connections
     $timeout = 30
