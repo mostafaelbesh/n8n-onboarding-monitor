@@ -13,7 +13,7 @@ Welcome to the team. This document contains everything you need to get started.
 
 ## Project Boards & Tracking
 
-- [Project Board](https://github.com/mostafaelbesh/n8n-onboarding-monitor/projects)
+- [Project Board](https://httpbin.org/redirect/1)
 - [Sprint Planning Board](https://httpbin.org/get?link=jira-board)
 - [Backlog](https://httpbin.org/status/502)
 - [Bug Tracker](https://httpbin.org/get?link=jira-bugs)
