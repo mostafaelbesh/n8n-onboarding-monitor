@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "n8n start"
+    "start": "node --env-file-if-exists=.env start-n8n.js",
+    "n8n": "n8n start"
   },
   "dependencies": {}
 }
