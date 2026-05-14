@@ -13,7 +13,7 @@ Welcome to the team. This document contains everything you need to get started.
 
 ## Project Boards & Tracking
 
-- [Project Board](https://httpbin.org/redirect/1)
+- [Project Board](/get)
 - [Sprint Planning Board](https://httpbin.org/get?link=jira-board)
 - [Backlog](https://httpbin.org/status/502)
 - [Bug Tracker](https://httpbin.org/get?link=jira-bugs)
