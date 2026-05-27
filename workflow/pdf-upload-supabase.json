@@ -1,0 +1,455 @@
+{
+  "name": "PDF Upload Monitor — Supabase Storage",
+  "nodes": [
+    {
+      "id": "pdf-trigger-schedule",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        280
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pdf-trigger-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        480
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pdf-upload",
+        "responseMode": "onReceived",
+        "responseData": "noData"
+      },
+      "webhookId": "pdf-upload-trigger-2026"
+    },
+    {
+      "id": "pdf-list-supabase",
+      "name": "List Supabase Files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/storage/v1/object/list/eob-chatbot-bucket' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"limit\":1000,\"offset\":0,\"prefix\":\"\",\"sortBy\":{\"column\":\"name\",\"order\":\"asc\"}}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pdf-read-all",
+      "name": "Read All Local PDFs",
+      "type": "n8n-nodes-base.readBinaryFiles",
+      "typeVersion": 1,
+      "position": [
+        760,
+        380
+      ],
+      "parameters": {
+        "fileSelector": "c:/ws/n8n/data/*.pdf",
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-filter",
+      "name": "Filter Unuploaded",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        380
+      ],
+      "parameters": {
+        "jsCode": "// Retrieve Supabase file listing (fullResponse wraps body in .body)\nconst supabaseResponse = $('List Supabase Files').first().json;\nconst supabaseFiles = Array.isArray(supabaseResponse.body) ? supabaseResponse.body : [];\n\n// Build set of already-uploaded filenames for O(1) lookup\nconst uploadedNames = new Set(supabaseFiles.map(f => f.name).filter(Boolean));\n\n// Filter local PDFs not yet in Supabase\nconst allItems = $input.all();\nconst pendingUploads = allItems.filter(item => {\n  const fileName = item.binary?.data?.fileName;\n  return fileName && !uploadedNames.has(fileName);\n});\n\nif (pendingUploads.length === 0) return [];\n\nreturn pendingUploads.map(item => ({\n  json: {\n    filename: item.binary.data.fileName,\n    totalLocal: allItems.length,\n    alreadyUploaded: uploadedNames.size,\n    pendingCount: pendingUploads.length,\n  },\n  binary: item.binary,\n}));"
+      }
+    },
+    {
+      "id": "pdf-upload",
+      "name": "Upload to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/storage/v1/object/eob-chatbot-bucket/' + encodeURIComponent($json.filename) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pdf-check-upload",
+      "name": "Upload Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        380
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 299,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "pdf-upload-done",
+      "name": "Upload Complete",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1800,
+        240
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1",
+              "name": "status",
+              "value": "uploaded",
+              "type": "string"
+            },
+            {
+              "id": "d2",
+              "name": "filename",
+              "value": "={{ $('Filter Unuploaded').item.json.filename }}",
+              "type": "string"
+            },
+            {
+              "id": "d3",
+              "name": "storagePath",
+              "value": "={{ $json.body.Key || $json.body.path || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "d4",
+              "name": "httpStatus",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "d5",
+              "name": "uploadedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-upload-failed",
+      "name": "Upload Failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1800,
+        520
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            },
+            {
+              "id": "f2",
+              "name": "filename",
+              "value": "={{ $('Filter Unuploaded').item.json.filename }}",
+              "type": "string"
+            },
+            {
+              "id": "f3",
+              "name": "errorMessage",
+              "value": "={{ $json.body.message || $json.body.error || 'Upload failed' }}",
+              "type": "string"
+            },
+            {
+              "id": "f4",
+              "name": "httpStatus",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "f5",
+              "name": "failedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-discord-success",
+      "name": "Discord: Upload Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2060,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: '✅ **PDF Uploaded**\\n📄 **File:** `' + $json.filename + '`\\n🗄️ **Path:** `' + $json.storagePath + '`\\n🔢 **Status:** ' + $json.httpStatus + '\\n⏰ ' + $json.uploadedAt }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-discord-failed",
+      "name": "Discord: Upload Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2060,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: '❌ **PDF Upload Failed**\\n� **File:** `' + $json.filename + '`\\n🔢 **Status:** ' + $json.httpStatus + '\\n⚠️ **Error:** ' + $json.errorMessage + '\\n⏰ ' + $json.failedAt }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "List Supabase Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "List Supabase Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Supabase Files": {
+      "main": [
+        [
+          {
+            "node": "Read All Local PDFs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read All Local PDFs": {
+      "main": [
+        [
+          {
+            "node": "Filter Unuploaded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Unuploaded": {
+      "main": [
+        [
+          {
+            "node": "Upload to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Upload Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Successful?": {
+      "main": [
+        [
+          {
+            "node": "Upload Complete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Complete": {
+      "main": [
+        [
+          {
+            "node": "Discord: Upload Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Failed": {
+      "main": [
+        [
+          {
+            "node": "Discord: Upload Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
