@@ -286,13 +286,187 @@
       }
     },
     {
-      "id": "pdf-discord-success",
-      "name": "Discord: Upload Success",
+      "id": "pdf-trigger-ingest",
+      "name": "Trigger Ingest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         2060,
         240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EOB_SERVER_URL + '/api/ingest' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-ingest-secret",
+              "value": "={{ $env.INGEST_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"filename\": $json.filename, \"bucket\": \"eob-chatbot-bucket\" } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pdf-check-ingest",
+      "name": "Ingest Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2320,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "i1",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "i2",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 299,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "pdf-ingest-done",
+      "name": "Ingest Complete",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2580,
+        120
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ic1",
+              "name": "status",
+              "value": "ingested",
+              "type": "string"
+            },
+            {
+              "id": "ic2",
+              "name": "filename",
+              "value": "={{ $('Filter Unuploaded').item.json.filename }}",
+              "type": "string"
+            },
+            {
+              "id": "ic3",
+              "name": "chunksAdded",
+              "value": "={{ $json.body.chunksAdded ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "ic4",
+              "name": "files",
+              "value": "={{ Array.isArray($json.body.files) ? $json.body.files.join(', ') : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "ic5",
+              "name": "ingestedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-ingest-failed",
+      "name": "Ingest Failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2580,
+        360
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "if1",
+              "name": "status",
+              "value": "ingest-failed",
+              "type": "string"
+            },
+            {
+              "id": "if2",
+              "name": "filename",
+              "value": "={{ $('Filter Unuploaded').item.json.filename }}",
+              "type": "string"
+            },
+            {
+              "id": "if3",
+              "name": "ingestError",
+              "value": "={{ $json.body.error || 'Ingest failed' }}",
+              "type": "string"
+            },
+            {
+              "id": "if4",
+              "name": "httpStatus",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            },
+            {
+              "id": "if5",
+              "name": "failedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-discord-success",
+      "name": "Discord: Upload Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2840,
+        120
       ],
       "parameters": {
         "method": "POST",
@@ -308,7 +482,34 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ content: '✅ **PDF Uploaded**\\n📄 **File:** `' + $json.filename + '`\\n🗄️ **Path:** `' + $json.storagePath + '`\\n🔢 **Status:** ' + $json.httpStatus + '\\n⏰ ' + $json.uploadedAt }) }}",
+        "jsonBody": "={{ JSON.stringify({ content: '✅ **PDF Uploaded & Ingested**\\n📄 **File:** `' + $json.filename + '`\\n🧩 **Chunks added:** ' + $json.chunksAdded + '\\n⏰ ' + $json.ingestedAt }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "pdf-discord-ingest-failed",
+      "name": "Discord: Ingest Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2840,
+        360
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: '⚠️ **PDF Ingest Failed**\\n📄 **File:** `' + $json.filename + '`\\n🔢 **HTTP Status:** ' + $json.httpStatus + '\\n❌ **Error:** ' + $json.ingestError + '\\n⏰ ' + $json.failedAt }) }}",
         "options": {}
       }
     },
@@ -429,7 +630,58 @@
       "main": [
         [
           {
+            "node": "Trigger Ingest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Ingest": {
+      "main": [
+        [
+          {
+            "node": "Ingest Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Successful?": {
+      "main": [
+        [
+          {
+            "node": "Ingest Complete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ingest Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Complete": {
+      "main": [
+        [
+          {
             "node": "Discord: Upload Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Failed": {
+      "main": [
+        [
+          {
+            "node": "Discord: Ingest Failed",
             "type": "main",
             "index": 0
           }
